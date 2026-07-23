@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Map 評論資料庫分析</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- 引入 SheetJS 供 Excel 匯出使用 -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- 引入 Mermaid 供流程圖使用 -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+    </script>
+    <style>
+        body { font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; background-color: #f8fafc; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); border-radius: 16px; box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05); border: 1px solid #f1f5f9; }
+        .progress-bar { transition: width 1s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        /* 自訂分類顏色 */
+        .theme-env { color: #10b981; } .bg-theme-env { background-color: #10b981; } .border-theme-env { border-color: #10b981; } .bg-light-env { background-color: #ecfdf5; }
+        .theme-desk { color: #3b82f6; } .bg-theme-desk { background-color: #3b82f6; } .border-theme-desk { border-color: #3b82f6; } .bg-light-desk { background-color: #eff6ff; }
+        .theme-master { color: #8b5cf6; } .bg-theme-master { background-color: #8b5cf6; } .border-theme-master { border-color: #8b5cf6; } .bg-light-master { background-color: #f5f3ff; }
+        .theme-park { color: #f97316; } .bg-theme-park { background-color: #f97316; } .border-theme-park { border-color: #f97316; } .bg-light-park { background-color: #fff7ed; }
+    </style>
+</head>
+<body class="p-4 md:p-8 text-slate-800 pb-20">
+
+    <!-- Header (支援總部切換店別) & 系統定義 -->
+    <header class="mb-8 max-w-7xl mx-auto">
+        <h1 class="text-3xl md:text-4xl font-extrabold text-slate-900 mb-3 flex items-center flex-wrap gap-4">
+            <div class="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl cursor-pointer hover:bg-blue-100 transition-colors flex items-center shadow-sm border border-blue-100" title="點擊切換分店">
+                中清店 <i class="fa-solid fa-caret-down ml-3 text-lg opacity-70"></i>
+            </div>
+            <span>Google Map 評論資料庫分析</span>
+            <span class="text-sm bg-indigo-100 text-indigo-800 py-1 px-3 rounded-full align-middle font-mono border border-indigo-200 mt-1 md:mt-0">V1</span>
+        </h1>
+        <p class="text-slate-500 font-medium ml-1">即時掌握各分類顧客滿意度、營運時段分佈與服務亮點</p>
+        
+        <div class="glass-panel p-6 mt-6 border-l-4 border-indigo-500">
+            <h2 class="text-xl font-bold mb-3 text-slate-800">系統模組定義 (System Definition V1)</h2>
+            <p class="text-slate-600 leading-relaxed text-sm md:text-base">
+                本模組導入<strong>「多維度自動標籤引擎 (Multi-dimensional Tagging Engine)」</strong>。系統支援<strong>月份動態檢索</strong>，並掃描非結構化的客評文本，自動將內容拆解歸類至：<strong>【環境】、【櫃台】、【師傅】、【停車】</strong> 四大維度。同時透過時間戳記自動分析<strong>「三班制營運時段 (00-08 / 08-16 / 16-24)」</strong>之客評分佈。內建之 Excel 匯出模組更支援自動結算每日小計與累計總數，協助管理層精準定位客訴根因與班表品質追蹤。
+            </p>
+        </div>
+    </header>
+
+    <!-- 系統流程圖 -->
+    <section class="mb-8 max-w-7xl mx-auto">
+        <div class="glass-panel p-6">
+            <h2 class="text-xl font-bold mb-4 text-slate-800 cursor-pointer flex justify-between items-center" onclick="toggleFlowchart()">
+                <span><i class="fa-solid fa-sitemap text-slate-400 mr-2"></i>分析架構圖 (Architecture Flowchart)</span>
+                <i class="fa-solid fa-chevron-down text-slate-400 transition-transform duration-300" id="flowchart-icon"></i>
+            </h2>
+            <div id="flowchart-container" class="overflow-hidden transition-all duration-300 h-0">
+                <pre class="mermaid text-center">
+                    graph TD
+                        A[歷史評論資料庫] --> M{月份與時段過濾器}
+                        M --> B{自動分類引擎 NLP}
+                        
+                        B -->|文本拆解| C1(環境設施)
+                        B -->|文本拆解| C2(櫃台接待)
+                        B -->|文本拆解| C3(師傅技術)
+                        B -->|文本拆解| C4(停車交通)
+                        
+                        C1 --> D[星級交叉分析引擎]
+                        C2 --> D
+                        C3 --> D
+                        C4 --> D
+                        
+                        D -->|滿意| E[正面亮點指標]
+                        D -->|普通| F[中立與潛在問題]
+                        D -->|需改善| G[負面客訴紅點]
+                        
+                        E --> H[戰情矩陣 / 時段圖表 / Excel 匯出]
+                        F --> H
+                        G --> H
+                </pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- 分析控制與總覽 -->
+    <section class="max-w-7xl mx-auto mb-6">
+        <div class="glass-panel p-5 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white border-l-4 border-l-indigo-600">
+            <div class="flex flex-col md:flex-row items-start md:items-center gap-4 w-full md:w-auto">
+                <label for="month-selector" class="font-bold text-slate-700 whitespace-nowrap"><i class="fa-regular fa-calendar-days mr-2 text-indigo-600"></i>分析月份：</label>
+                <input type="month" id="month-selector" value="2026-07" class="border border-slate-300 rounded-lg px-4 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full md:w-auto font-medium shadow-sm transition">
+                <button onclick="runAnalysisByMonth()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-5 rounded-lg shadow transition duration-200 flex items-center w-full md:w-auto justify-center whitespace-nowrap">
+                    <i class="fa-solid fa-filter mr-2"></i>套用篩選
+                </button>
+            </div>
+            
+            <!-- 營運時段分析總覽 -->
+            <div class="flex gap-4 w-full md:w-auto mt-4 md:mt-0 border-t md:border-t-0 pt-4 md:pt-0">
+                <div class="text-center bg-blue-50 px-4 py-2 rounded-lg border border-blue-100 flex-1">
+                    <p class="text-xs text-blue-600 font-bold mb-1"><i class="fa-solid fa-moon mr-1"></i>早班(00-08)</p>
+                    <p class="text-xl font-black text-slate-800" id="shift-early-count">0</p>
+                </div>
+                <div class="text-center bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100 flex-1">
+                    <p class="text-xs text-emerald-600 font-bold mb-1"><i class="fa-solid fa-sun mr-1"></i>中班(08-16)</p>
+                    <p class="text-xl font-black text-slate-800" id="shift-day-count">0</p>
+                </div>
+                <div class="text-center bg-purple-50 px-4 py-2 rounded-lg border border-purple-100 flex-1">
+                    <p class="text-xs text-purple-600 font-bold mb-1"><i class="fa-solid fa-cloud-moon mr-1"></i>晚班(16-24)</p>
+                    <p class="text-xl font-black text-slate-800" id="shift-night-count">0</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 四大分類總計卡片 -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <!-- 環境 -->
+            <div class="glass-panel p-4 border-b-4 border-theme-env bg-light-env cursor-pointer hover:shadow-md transition" onclick="filterList('env')">
+                <div class="flex justify-between items-start">
+                    <div class="theme-env bg-white p-2 rounded-lg shadow-sm"><i class="fa-solid fa-leaf text-xl"></i></div>
+                    <span class="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full">高滿意度</span>
+                </div>
+                <h3 class="font-bold text-slate-700 mt-3 text-lg">環境設施</h3>
+                <div class="flex justify-between items-end mt-1">
+                    <p class="text-sm text-slate-500">提及次數</p>
+                    <p class="text-2xl font-black text-slate-800" id="count-env">0</p>
+                </div>
+            </div>
+            <!-- 櫃台 -->
+            <div class="glass-panel p-4 border-b-4 border-theme-desk bg-light-desk cursor-pointer hover:shadow-md transition" onclick="filterList('desk')">
+                <div class="flex justify-between items-start">
+                    <div class="theme-desk bg-white p-2 rounded-lg shadow-sm"><i class="fa-solid fa-bell-concierge text-xl"></i></div>
+                    <span class="text-xs font-bold text-blue-600 bg-blue-100 px-2 py-1 rounded-full">服務穩定</span>
+                </div>
+                <h3 class="font-bold text-slate-700 mt-3 text-lg">櫃台接待</h3>
+                <div class="flex justify-between items-end mt-1">
+                    <p class="text-sm text-slate-500">提及次數</p>
+                    <p class="text-2xl font-black text-slate-800" id="count-desk">0</p>
+                </div>
+            </div>
+            <!-- 師傅 -->
+            <div class="glass-panel p-4 border-b-4 border-theme-master bg-light-master cursor-pointer hover:shadow-md transition" onclick="filterList('master')">
+                <div class="flex justify-between items-start">
+                    <div class="theme-master bg-white p-2 rounded-lg shadow-sm"><i class="fa-solid fa-hands-holding-circle text-xl"></i></div>
+                    <span class="text-xs font-bold text-purple-600 bg-purple-100 px-2 py-1 rounded-full">核心價值</span>
+                </div>
+                <h3 class="font-bold text-slate-700 mt-3 text-lg">師傅技術</h3>
+                <div class="flex justify-between items-end mt-1">
+                    <p class="text-sm text-slate-500">提及次數</p>
+                    <p class="text-2xl font-black text-slate-800" id="count-master">0</p>
+                </div>
+            </div>
+            <!-- 停車 -->
+            <div class="glass-panel p-4 border-b-4 border-theme-park bg-light-park cursor-pointer hover:shadow-md transition" onclick="filterList('park')">
+                <div class="flex justify-between items-start">
+                    <div class="theme-park bg-white p-2 rounded-lg shadow-sm"><i class="fa-solid fa-square-parking text-xl"></i></div>
+                    <span class="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded-full animate-pulse">需關注</span>
+                </div>
+                <h3 class="font-bold text-slate-700 mt-3 text-lg">停車與交通</h3>
+                <div class="flex justify-between items-end mt-1">
+                    <p class="text-sm text-slate-500">提及次數</p>
+                    <p class="text-2xl font-black text-slate-800" id="count-park">0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 各分類滿意度佔比 -->
+        <div class="glass-panel p-6 mb-8">
+            <h3 class="font-bold text-lg text-slate-700 mb-6 flex items-center border-b pb-3">
+                <i class="fa-solid fa-chart-bar text-slate-400 mr-2"></i>各分類滿意度佔比
+            </h3>
+            
+            <div class="space-y-6" id="matrix-container">
+                <!-- 由 JS 動態生成條狀圖 -->
+            </div>
+            
+            <!-- 圖例 -->
+            <div class="flex justify-center gap-6 mt-8 text-sm font-medium border-t pt-4">
+                <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-emerald-500 mr-2"></span>滿意 (5星, 4星)</div>
+                <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-amber-400 mr-2"></span>普通 (3星)</div>
+                <div class="flex items-center"><span class="w-3 h-3 rounded-full bg-red-500 mr-2"></span>需改善 (1星, 2星)</div>
+            </div>
+        </div>
+
+        <!-- 顧客評論清單與匯出 -->
+        <div class="glass-panel p-6">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b pb-4 gap-4">
+                <h3 class="font-bold text-lg text-slate-700 flex items-center">
+                    <i class="fa-solid fa-list-check text-slate-400 mr-2"></i>顧客評論列表
+                </h3>
+                <div class="flex flex-wrap gap-3 w-full md:w-auto">
+                    <button class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium transition shadow-sm" onclick="filterList('all')" id="btn-filter-all">
+                        全部顯示
+                    </button>
+                    <button class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition shadow-sm flex items-center" onclick="exportToExcel()">
+                        <i class="fa-solid fa-file-excel mr-2"></i>匯出當前分析至 Excel
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 無 max-height 讓資料完整顯示 -->
+            <div class="w-full">
+                <ul class="space-y-3" id="review-list">
+                    <!-- JS 填入清單 -->
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- 腳本與邏輯 -->
+    <script>
+        // 定義四大分類關鍵字庫
+        const categories = {
+            env: { id: 'env', name: '環境設施', color: 'theme-env', bgClass: 'bg-emerald-500', keywords: ['環境', '乾淨', '舒適', '冷氣', '溫度', '裝潢', '空間', '音樂', '水溫', '泡腳', '廁所'] },
+            desk: { id: 'desk', name: '櫃台接待', color: 'theme-desk', bgClass: 'bg-blue-500', keywords: ['櫃台', '櫃檯', '接待', '態度', '介紹', '結帳', '服務人員', '禮貌', '預約'] },
+            master: { id: 'master', name: '師傅技術', color: 'theme-master', bgClass: 'bg-purple-500', keywords: ['師傅', '師父', '號', '技術', '手法', '力道', '按', '推', '穴道', '放鬆', '聊天'] },
+            park: { id: 'park', name: '停車交通', color: 'theme-park', bgClass: 'bg-orange-500', keywords: ['停車', '車位', '特約', '找車位', '交通', '停車場', '開車', '騎車'] }
+        };
+
+        // 模擬從資料庫撈取的資料 (加入完整 ISO 時間格式以便過濾月份與計算時段)
+        const mockReviews = [
+            // 7月份資料
+            { id: 1, datetime: "2026-07-22T05:30:00", rating: 5, text: "做腳底按摩，9號和28號師父很棒，很舒服。整體環境也很乾淨。" }, // 05:30 -> 早班
+            { id: 2, datetime: "2026-07-21T10:15:00", rating: 5, text: "今天第一次來 櫃檯的介紹非常詳細 且很有禮貌 服務態度非常好" }, // 10:15 -> 中班
+            { id: 3, datetime: "2026-07-21T02:45:00", rating: 1, text: "半夜自己來中清館，從開始泡腳就覺得水溫不對，冷氣也開太冷了..." }, // 02:45 -> 早班
+            { id: 4, datetime: "2026-07-21T14:20:00", rating: 5, text: "整體環境乾淨舒適。89號師傅態度親切，力道適中，會隨時確認舒適度。" }, // 14:20 -> 中班
+            { id: 5, datetime: "2026-07-20T21:10:00", rating: 5, text: "88號師傅 按摩很夠力👍 櫃台人員也很熱情。" }, // 21:10 -> 晚班
+            { id: 6, datetime: "2026-07-20T19:30:00", rating: 4, text: "師傅按得很好，但特約停車場標示不清楚，繞了兩圈才找到車位，扣一星。" }, // 19:30 -> 晚班
+            { id: 7, datetime: "2026-07-19T17:45:00", rating: 2, text: "預約了結果到現場櫃台說沒看到資料，等了快20分鐘，而且旁邊沒有專屬停車場很不方便。" }, // 17:45 -> 晚班
+            { id: 8, datetime: "2026-07-19T01:20:00", rating: 5, text: "9號 手法良好非常舒服 不會硬要聊天I人大推" }, // 01:20 -> 早班
+            { id: 9, datetime: "2026-07-18T15:50:00", rating: 3, text: "裝潢很漂亮，但按到一半旁邊客人在大聲講電話，環境隔音可以再加強。" }, // 15:50 -> 中班
+            { id: 10, datetime: "2026-07-18T20:05:00", rating: 1, text: "停車超級不方便！附近根本找不到位子，停紅線還被開單，按個摩一肚子氣。" }, // 20:05 -> 晚班
+            { id: 11, datetime: "2026-07-17T22:30:00", rating: 5, text: "大推82號女技師！手法輕柔卻能推開緊繃，改善了我穿高跟鞋的體態問題。" }, // 22:30 -> 晚班
+            // 6月份資料 (供測試月份選擇器)
+            { id: 12, datetime: "2026-06-15T11:00:00", rating: 5, text: "6月特地帶家人來放鬆，環境很棒，師傅也很專業。" },
+            { id: 13, datetime: "2026-06-02T19:00:00", rating: 3, text: "櫃台態度普通，但停車場滿了等很久。" }
+        ];
+
+        // 全域變數
+        let filteredReviewsByMonth = []; // 當前月份的所有資料
+        let currentFilterKey = 'all';    // 當前維度按鈕狀態
+        
+        let analysisData = {
+            env: { total: 0, pos: 0, neu: 0, neg: 0, reviews: [] },
+            desk: { total: 0, pos: 0, neu: 0, neg: 0, reviews: [] },
+            master: { total: 0, pos: 0, neu: 0, neg: 0, reviews: [] },
+            park: { total: 0, pos: 0, neu: 0, neg: 0, reviews: [] }
+        };
+
+        // 依據選擇的月份執行過濾與分析
+        window.runAnalysisByMonth = function() {
+            const selectedMonthStr = document.getElementById('month-selector').value; // 格式: "YYYY-MM"
+            if(!selectedMonthStr) return;
+
+            // 1. 過濾出該月份的評論
+            filteredReviewsByMonth = mockReviews.filter(r => r.datetime.startsWith(selectedMonthStr));
+            
+            // 2. 時段計數器重置
+            let shiftCounts = { early: 0, day: 0, night: 0 };
+            
+            // 3. 維度數據重置
+            Object.keys(analysisData).forEach(k => {
+                analysisData[k] = { total: 0, pos: 0, neu: 0, neg: 0, reviews: [] };
+            });
+
+            // 4. 執行文本分析與時段統計
+            filteredReviewsByMonth.forEach(review => {
+                // 判斷時段
+                const hour = parseInt(review.datetime.split('T')[1].substring(0, 2), 10);
+                if (hour >= 0 && hour < 8) {
+                    shiftCounts.early++;
+                    review.shiftName = "早班 (00-08)";
+                } else if (hour >= 8 && hour < 16) {
+                    shiftCounts.day++;
+                    review.shiftName = "中班 (08-16)";
+                } else {
+                    shiftCounts.night++;
+                    review.shiftName = "晚班 (16-24)";
+                }
+
+                // 判斷分類標籤
+                let tags = [];
+                Object.keys(categories).forEach(catKey => {
+                    const matched = categories[catKey].keywords.some(kw => review.text.includes(kw));
+                    if (matched) {
+                        tags.push(catKey);
+                        analysisData[catKey].total++;
+                        analysisData[catKey].reviews.push(review);
+                        
+                        if (review.rating >= 4) analysisData[catKey].pos++;
+                        else if (review.rating === 3) analysisData[catKey].neu++;
+                        else analysisData[catKey].neg++;
+                    }
+                });
+                review.tags = tags;
+            });
+
+            // 5. 更新 UI
+            updateDashboardUI(shiftCounts);
+        }
+
+        // 更新畫面 UI
+        function updateDashboardUI(shiftCounts) {
+            // 更新時段 UI
+            document.getElementById('shift-early-count').innerText = shiftCounts.early;
+            document.getElementById('shift-day-count').innerText = shiftCounts.day;
+            document.getElementById('shift-night-count').innerText = shiftCounts.night;
+
+            // 更新四大維度卡片總數
+            document.getElementById('count-env').innerText = analysisData.env.total;
+            document.getElementById('count-desk').innerText = analysisData.desk.total;
+            document.getElementById('count-master').innerText = analysisData.master.total;
+            document.getElementById('count-park').innerText = analysisData.park.total;
+
+            const matrixContainer = document.getElementById('matrix-container');
+            matrixContainer.innerHTML = '';
+            
+            Object.keys(categories).forEach(catKey => {
+                const data = analysisData[catKey];
+                if (data.total === 0) return;
+
+                const posPct = (data.pos / data.total) * 100;
+                const neuPct = (data.neu / data.total) * 100;
+                const negPct = (data.neg / data.total) * 100;
+                const catDef = categories[catKey];
+
+                const html = `
+                    <div class="flex flex-col md:flex-row md:items-center gap-4 group cursor-pointer" onclick="filterList('${catKey}')">
+                        <div class="w-full md:w-32 flex justify-between items-center shrink-0">
+                            <span class="font-bold ${catDef.color} flex items-center text-lg">
+                                ${catDef.name}
+                            </span>
+                            <span class="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded font-bold">共 ${data.total} 筆</span>
+                        </div>
+                        
+                        <!-- 堆疊條狀圖 -->
+                        <div class="flex-grow flex h-10 rounded-lg overflow-hidden bg-slate-100 shadow-inner">
+                            <div class="bg-emerald-500 flex justify-center items-center text-white text-sm font-bold progress-bar transition-all hover:brightness-110" style="width: 0%" data-target="${posPct}%">
+                                ${posPct > 5 ? Math.round(posPct)+'%' : ''}
+                            </div>
+                            <div class="bg-amber-400 flex justify-center items-center text-white text-sm font-bold progress-bar transition-all hover:brightness-110" style="width: 0%" data-target="${neuPct}%">
+                                ${neuPct > 5 ? Math.round(neuPct)+'%' : ''}
+                            </div>
+                            <div class="bg-red-500 flex justify-center items-center text-white text-sm font-bold progress-bar transition-all hover:brightness-110" style="width: 0%" data-target="${negPct}%">
+                                ${negPct > 5 ? Math.round(negPct)+'%' : ''}
+                            </div>
+                        </div>
+                        
+                        <!-- 數據統計小標籤 -->
+                        <div class="w-full md:w-48 shrink-0 flex gap-2 text-sm font-bold">
+                            <span class="bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg border border-emerald-100"><i class="fa-regular fa-thumbs-up mr-1"></i>${data.pos}</span>
+                            <span class="bg-amber-50 text-amber-700 px-2 py-1 rounded-lg border border-amber-100"><i class="fa-regular fa-face-meh mr-1"></i>${data.neu}</span>
+                            <span class="bg-red-50 text-red-700 px-2 py-1 rounded-lg border border-red-100"><i class="fa-regular fa-thumbs-down mr-1"></i>${data.neg}</span>
+                        </div>
+                    </div>
+                `;
+                matrixContainer.innerHTML += html;
+            });
+
+            setTimeout(() => {
+                document.querySelectorAll('.progress-bar').forEach(bar => {
+                    bar.style.width = bar.getAttribute('data-target');
+                });
+            }, 100);
+
+            // 重整下方清單
+            filterList(currentFilterKey);
+        }
+
+        // 過濾下方評論列表
+        window.filterList = function(filterKey) {
+            currentFilterKey = filterKey; 
+            const listContainer = document.getElementById('review-list');
+            listContainer.innerHTML = '';
+            
+            if(filterKey === 'all') {
+                document.getElementById('btn-filter-all').classList.replace('bg-slate-200', 'bg-slate-800');
+                document.getElementById('btn-filter-all').classList.replace('text-slate-700', 'text-white');
+            } else {
+                document.getElementById('btn-filter-all').classList.replace('bg-slate-800', 'bg-slate-200');
+                document.getElementById('btn-filter-all').classList.replace('text-white', 'text-slate-700');
+            }
+
+            let displayReviews = filteredReviewsByMonth;
+            if (filterKey !== 'all') {
+                displayReviews = analysisData[filterKey].reviews;
+            }
+
+            if(displayReviews.length === 0) {
+                listContainer.innerHTML = '<li class="text-center text-slate-400 py-8 font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">此範圍內目前無相關評論資料。</li>';
+                return;
+            }
+
+            displayReviews.forEach(r => {
+                const stars = '<i class="fa-solid fa-star text-yellow-400"></i>'.repeat(r.rating) + 
+                              '<i class="fa-regular fa-star text-slate-300"></i>'.repeat(5 - r.rating);
+                
+                let tagsHtml = r.tags.map(t => {
+                    const c = categories[t];
+                    return `<span class="text-xs px-2 py-1 rounded bg-white border ${c.color.replace('theme-', 'border-theme-')} ${c.color} font-bold">${c.name}</span>`;
+                }).join('');
+
+                let borderCol = r.rating >= 4 ? 'border-emerald-500' : (r.rating === 3 ? 'border-amber-400' : 'border-red-500');
+                let bgCol = r.rating <= 2 ? 'bg-red-50' : 'bg-white'; 
+                
+                // 擷取日期與時間
+                const datePart = r.datetime.split('T')[0];
+                const timePart = r.datetime.split('T')[1].substring(0,5);
+
+                const html = `
+                    <li class="${bgCol} p-5 rounded-xl shadow-sm border-l-4 ${borderCol} border-t border-r border-b border-slate-100 flex flex-col md:flex-row gap-5 hover:shadow-md transition">
+                        <div class="flex flex-col gap-2 shrink-0 md:w-40 border-b md:border-b-0 md:border-r border-slate-200 pb-3 md:pb-0 md:pr-4">
+                            <div class="text-sm tracking-widest">${stars}</div>
+                            <div class="text-xs text-slate-500 font-bold">${datePart} <span class="text-slate-400 ml-1 font-normal">${timePart}</span></div>
+                            <div class="text-[10px] text-slate-400">${r.shiftName}</div>
+                            <div class="flex flex-wrap gap-1 mt-1">${tagsHtml}</div>
+                        </div>
+                        <p class="text-slate-700 text-base leading-relaxed flex-grow">${r.text}</p>
+                    </li>
+                `;
+                listContainer.innerHTML += html;
+            });
+        }
+
+        // 匯出 Excel 功能 (含每日統計與累計功能)
+        window.exportToExcel = function() {
+            const selectedMonthStr = document.getElementById('month-selector').value;
+            let reviewsToExport = currentFilterKey === 'all' ? filteredReviewsByMonth : analysisData[currentFilterKey].reviews;
+            
+            if (reviewsToExport.length === 0) {
+                alert("目前沒有資料可以匯出！");
+                return;
+            }
+
+            // 1. 【評論明細】資料準備
+            const exportData = reviewsToExport.map(r => {
+                const categoryNames = r.tags.map(t => categories[t].name).join(', ');
+                return {
+                    '評論日期': r.datetime.split('T')[0],
+                    '時間': r.datetime.split('T')[1].substring(0,5),
+                    '營運時段': r.shiftName,
+                    '星級': r.rating + ' 顆星',
+                    '相關分類': categoryNames || '無特別分類',
+                    '顧客評論內容': r.text
+                };
+            });
+            const wsDetails = XLSX.utils.json_to_sheet(exportData);
+            wsDetails['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 15 }, { wch: 10 }, { wch: 20 }, { wch: 80 }];
+
+            // 2. 【每日統計】資料準備 (自動小計與累計)
+            const dateCounts = {};
+            reviewsToExport.forEach(r => {
+                const dateKey = r.datetime.split('T')[0];
+                dateCounts[dateKey] = (dateCounts[dateKey] || 0) + 1;
+            });
+            
+            const sortedDates = Object.keys(dateCounts).sort((a, b) => new Date(a) - new Date(b));
+            let cumulativeTotal = 0;
+            const summaryData = sortedDates.map(date => {
+                const dailyCount = dateCounts[date];
+                cumulativeTotal += dailyCount;
+                return {
+                    '日期': date,
+                    '每日評論數小計': dailyCount,
+                    '累計總數': cumulativeTotal
+                };
+            });
+
+            summaryData.push({
+                '日期': `${selectedMonthStr} 總計`,
+                '每日評論數小計': cumulativeTotal,
+                '累計總數': '-'
+            });
+
+            const wsSummary = XLSX.utils.json_to_sheet(summaryData);
+            wsSummary['!cols'] = [{ wch: 15 }, { wch: 20 }, { wch: 20 }];
+
+            // 3. 匯出活頁簿
+            const workbook = XLSX.utils.book_new();
+            const filterName = currentFilterKey === 'all' ? '全部' : categories[currentFilterKey].name;
+            
+            XLSX.utils.book_append_sheet(workbook, wsDetails, `${filterName}評論明細`);
+            XLSX.utils.book_append_sheet(workbook, wsSummary, `每日統計`);
+
+            XLSX.writeFile(workbook, `中清店_${selectedMonthStr}_${filterName}評論分析.xlsx`);
+        }
+
+        // Mermaid 展開/收合
+        window.toggleFlowchart = function() {
+            const container = document.getElementById('flowchart-container');
+            const icon = document.getElementById('flowchart-icon');
+            if (container.classList.contains('h-0')) {
+                container.classList.remove('h-0');
+                container.style.height = container.scrollHeight + "px";
+                icon.classList.add('rotate-180');
+            } else {
+                container.style.height = "0px";
+                container.classList.add('h-0');
+                icon.classList.remove('rotate-180');
+            }
+        };
+
+        window.onload = () => {
+            // 系統啟動，預設載入 2026-07 的分析
+            runAnalysisByMonth();
+            
+            // 預設展開架構圖以便檢視
+            setTimeout(() => {
+                const fcContainer = document.getElementById('flowchart-container');
+                fcContainer.style.height = fcContainer.scrollHeight + "px";
+                document.getElementById('flowchart-icon').classList.add('rotate-180');
+            }, 500);
+        };
+    </script>
+</body>
+</html>
