@@ -266,11 +266,18 @@
                      throw new Error('API 請求失敗，狀態碼: ' + response.status);
                 }
 
-                // 取得真實的資料陣列
-                const realFetchedData = await response.json();
+                // 取得真實的資料
+                const rawData = await response.json();
+                
+                // 💡 智慧解包：如果後端把陣列包在物件裡面 (例如 { data: [...] } 或 { reviews: [...] })
+                let realFetchedData = rawData;
+                if (rawData && !Array.isArray(rawData) && typeof rawData === 'object') {
+                    realFetchedData = rawData.data || rawData.reviews || rawData.result || rawData.items || [];
+                }
 
                 if (!Array.isArray(realFetchedData) || realFetchedData.length === 0) {
-                    showToast("目前 API 沒有回傳新評論資料或格式錯誤", "info");
+                    console.error("⚠️ API 回傳了非預期的格式或空資料。原始資料如下:", rawData);
+                    showToast("API 格式不符或為空，請按 F12 檢查 Console", "error");
                     return; 
                 }
 
