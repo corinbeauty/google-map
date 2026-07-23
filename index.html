@@ -251,40 +251,47 @@
 
             const btn = document.getElementById('btn-fetch');
             const originalHtml = btn.innerHTML;
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>正在與 Google API 同步...';
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>正在與真實 API 同步...';
             btn.disabled = true;
 
             try {
-                // 這裡模擬真實 API 延遲與回傳的資料格式
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                // 呼叫您提供的真實 GAS API 網址
+                const apiUrl = 'https://script.google.com/macros/s/AKfycbysn4BPnrCIRokYm_s7Zqkbk2enbvzWxXT316qkrsernGS90wonu1wawHGhk6rTz-MH7A/exec';
+                const response = await fetch(apiUrl);
                 
-                // 模擬抓取回來的資料 (開發者可將此段替換為真實的 fetch API call)
-                const mockFetchedData = [
-                    { id: "rev_" + Date.now() + "_1", datetime: "2026-07-23T02:15:00", rating: 5, text: "半夜來放鬆，9號和28號師父力道適中，環境很乾淨。" },
-                    { id: "rev_" + Date.now() + "_2", datetime: "2026-07-23T10:30:00", rating: 5, text: "櫃檯接待非常詳細且很有禮貌，早班師傅也很專業。" },
-                    { id: "rev_" + Date.now() + "_3", datetime: "2026-07-22T19:45:00", rating: 2, text: "停車場標示不清，繞了好久。而且冷氣開太冷了..." },
-                    { id: "rev_" + Date.now() + "_4", datetime: "2026-07-22T21:10:00", rating: 5, text: "88號師傅 按摩很夠力👍 櫃台人員也很熱情。" },
-                    { id: "rev_" + Date.now() + "_5", datetime: "2026-07-21T05:20:00", rating: 5, text: "大夜班來按，環境舒適安靜，師傅不會硬聊，I人大推！" }
-                ];
+                if (!response.ok) {
+                    throw new Error('API 請求失敗，狀態碼: ' + response.status);
+                }
+                
+                const realFetchedData = await response.json();
+
+                if (!Array.isArray(realFetchedData) || realFetchedData.length === 0) {
+                    showToast("目前 API 沒有回傳新評論資料", "info");
+                    return; // 若沒有資料則停止後續寫入動作
+                }
 
                 // 寫入 Firebase
                 const reviewsRef = collection(db, 'artifacts', firebaseConfig.projectId, 'users', currentUserId, 'reviews');
                 
                 let writeCount = 0;
-                for (const rev of mockFetchedData) {
+                for (const rev of realFetchedData) {
+                    // 確保 API 傳回的資料有 id，若後端沒產生，前端會自動補上確保能寫入
+                    const docId = rev.id || ("rev_" + Date.now() + "_" + writeCount);
+                    const finalRev = { ...rev, id: docId };
+                    
                     // 使用 setDoc 確保若 ID 重複不會重複寫入 (Upsert)
-                    await setDoc(doc(reviewsRef, rev.id), rev);
+                    await setDoc(doc(reviewsRef, docId), finalRev);
                     writeCount++;
                 }
 
-                showToast(`成功從 Google Map 抓取並寫入 ${writeCount} 筆新評論！`, "success");
+                showToast(`成功從真實 API 抓取並寫入 ${writeCount} 筆評論！`, "success");
                 
                 // 重新載入資料庫並刷新畫面
                 await loadReviewsFromFirebase();
 
             } catch (error) {
                 console.error("寫入失敗", error);
-                showToast("抓取與寫入失敗，請檢查權限", "error");
+                showToast("抓取與寫入失敗，請檢查 API 網址或網路", "error");
             } finally {
                 btn.innerHTML = originalHtml;
                 btn.disabled = false;
