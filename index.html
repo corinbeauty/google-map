@@ -31,13 +31,17 @@
                 中清店 <i class="fa-solid fa-caret-down ml-3 text-lg opacity-70"></i>
             </div>
             <span>Google Map 評論資料庫分析</span>
+            <span class="text-sm bg-indigo-100 text-indigo-800 py-1 px-3 rounded-full align-middle font-mono border border-indigo-200 mt-1 md:mt-0">V1</span>
         </h1>
-        <div class="flex items-center gap-2">
-            <span class="relative flex h-3 w-3">
-              <span id="db-status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
-              <span id="db-status-dot" class="relative inline-flex rounded-full h-3 w-3 bg-slate-500"></span>
-            </span>
-            <p class="text-slate-500 font-medium" id="db-status-text">正在連接 Firebase 資料庫...</p>
+        <div class="flex flex-col md:flex-row items-start md:items-center gap-4 justify-between">
+            <p class="text-slate-500 font-medium ml-1">即時掌握各分類顧客滿意度、營運時段分佈與服務亮點</p>
+            <div class="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full shadow-sm border border-slate-200">
+                <span class="relative flex h-3 w-3">
+                  <span id="db-status-ping" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
+                  <span id="db-status-dot" class="relative inline-flex rounded-full h-3 w-3 bg-slate-500"></span>
+                </span>
+                <p class="text-slate-500 font-medium text-sm" id="db-status-text">正在連接 Firebase 資料庫...</p>
+            </div>
         </div>
     </header>
 
@@ -182,7 +186,7 @@
         };
 
         let db, auth, currentUserId;
-        let allReviews = []; // 從 Firebase 撈取的所有原始資料
+        let allReviews = []; 
         
         // 系統啟動初始化 Firebase
         async function initFirebase() {
@@ -191,13 +195,11 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // 匿名登入取得權限
                 const userCredential = await signInAnonymously(auth);
                 currentUserId = userCredential.user.uid;
                 
                 updateDBStatus(true, "Firebase 已連線，正在載入歷史資料...");
                 
-                // 載入資料庫
                 await loadReviewsFromFirebase();
                 
             } catch (error) {
@@ -235,6 +237,8 @@
                     showToast(`成功載入 ${allReviews.length} 筆歷史評論`, "success");
                 } else {
                     showToast("資料庫目前為空，請點擊上方按鈕抓取最新評論", "info");
+                    // 清空清單 UI
+                    document.getElementById('review-list').innerHTML = '<li class="text-center text-slate-400 py-8 font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">目前無資料，請點擊上方按鈕抓取最新評論。</li>';
                 }
             } catch (error) {
                 console.error("讀取資料失敗", error);
@@ -242,7 +246,7 @@
             }
         }
 
-        // 向 Google Map 抓取資料並寫入 Firebase (使用真實 API)
+        // 🔴 抓取並寫入 DB 的核心邏輯 (已更新為最新 URL)
         window.fetchAndSaveGoogleReviews = async function() {
             if (!currentUserId) {
                 showToast("資料庫未就緒，請稍後再試", "error");
@@ -255,29 +259,29 @@
             btn.disabled = true;
 
             try {
-                // 🔴 替換為您提供的最新真實 API 網址
-                const apiUrl = 'https://script.google.com/macros/s/AKfycby1zLdPuiwugyVbJ89IROIJ9KRLrDVbQKxvZjuW_0eejnd_7bDCF3De65jY2fTJisn3Xw/exec';
+                // ⚠️ 最新提供的 API 網址
+                const apiUrl = 'https://script.google.com/macros/s/AKfycbxgPiLDV9JHiBzI4wJHftO1VvGfxXVxwoCeOEO8pDX8OiqaGam-JdGuWPcZhVyH_kh6MA/exec';
                 
-                const response = await fetch(apiUrl, {
-                    method: 'GET'
-                });
+                const response = await fetch(apiUrl, { method: 'GET' });
                 
                 if (!response.ok) {
                      throw new Error('API 請求失敗，狀態碼: ' + response.status);
                 }
 
-                // 取得真實的資料
-                const rawData = await response.json();
+                // 智慧解包：應付不同格式的 JSON
+                let realFetchedData = await response.json();
                 
-                // 💡 智慧解包：如果後端把陣列包在物件裡面 (例如 { data: [...] } 或 { reviews: [...] })
-                let realFetchedData = rawData;
-                if (rawData && !Array.isArray(rawData) && typeof rawData === 'object') {
-                    realFetchedData = rawData.data || rawData.reviews || rawData.result || rawData.items || [];
+                // 如果回傳的是 { "data": [...] } 或是 { "reviews": [...] }，自動抽取出陣列
+                if (realFetchedData && typeof realFetchedData === 'object' && !Array.isArray(realFetchedData)) {
+                    const potentialArray = Object.values(realFetchedData).find(val => Array.isArray(val));
+                    if (potentialArray) {
+                        realFetchedData = potentialArray;
+                    }
                 }
 
                 if (!Array.isArray(realFetchedData) || realFetchedData.length === 0) {
-                    console.error("⚠️ API 回傳了非預期的格式或空資料。原始資料如下:", rawData);
-                    showToast("API 格式不符或為空，請按 F12 檢查 Console", "error");
+                    console.error("⚠️ API 回傳了非預期的格式或空資料。原始資料如下:", realFetchedData);
+                    showToast("API 回傳格式異常或無新資料，請檢查 Console", "info");
                     return; 
                 }
 
@@ -288,23 +292,31 @@
                 for (const rev of realFetchedData) {
                     // 確保 API 傳回的資料有 id
                     const docId = rev.id || ("rev_" + Date.now() + "_" + writeCount);
-                    // 確保包含 datetime 屬性供分析使用 (如果 API 傳回的是 date，則轉換)
                     let finalRev = { ...rev, id: docId };
                     
+                    // 時間屬性防呆：確保 datetime 存在以利後續月份與時段分析
                     if(!finalRev.datetime && finalRev.date) {
-                         // 補上預設時間以符合系統分析格式 YYYY-MM-DDTHH:MM:SS
                          finalRev.datetime = finalRev.date + "T12:00:00";
+                    } else if (!finalRev.datetime && finalRev.createTime) {
+                         finalRev.datetime = finalRev.createTime;
                     } else if (!finalRev.datetime) {
-                         // 完全沒有時間屬性的防呆
                          const now = new Date();
                          finalRev.datetime = now.toISOString().substring(0, 19);
                     }
+
+                    // 強制轉型：確保 rating 是數字 (避免出錯)
+                    if(finalRev.rating) finalRev.rating = Number(finalRev.rating);
+                    if(finalRev.starRating) finalRev.rating = Number(finalRev.starRating);
+
+                    // 確保 text 有值
+                    if(!finalRev.text && finalRev.comment) finalRev.text = finalRev.comment;
+                    if(!finalRev.text) finalRev.text = "無評論內容";
 
                     await setDoc(doc(reviewsRef, docId), finalRev);
                     writeCount++;
                 }
 
-                showToast(`成功從真實 API 抓取並寫入 ${writeCount} 筆評論！`, "success");
+                showToast(`成功從 API 抓取並寫入 ${writeCount} 筆評論！`, "success");
                 
                 // 重新載入資料庫並刷新畫面
                 await loadReviewsFromFirebase();
@@ -312,10 +324,10 @@
             } catch (error) {
                 console.error("寫入失敗", error);
                 
-                // 如果 fetch 失敗，可能是 CORS 徹底阻擋。作為備案，我們載入一些展示用的真實格式資料
-                showToast("API 遭受 CORS 阻擋。正在載入展示資料...", "info");
+                // 錯誤捕捉與 Fallback
+                showToast("連線 API 失敗或遭受阻擋。正在寫入測試資料以供預覽...", "info");
                 
-                // 載入展示資料 (Fallback)
+                // Fallback 測試資料 (當 CORS 完全阻擋時觸發)
                 const mockFetchedData = [
                     { id: "test_1", datetime: "2026-07-23T05:30:00", rating: 5, text: "做腳底按摩，9號和28號師父很棒，很舒服。整體環境也很乾淨。" },
                     { id: "test_2", datetime: "2026-07-23T10:15:00", rating: 5, text: "今天第一次來 櫃檯的介紹非常詳細 且很有禮貌 服務態度非常好" },
@@ -328,7 +340,6 @@
                 for (const rev of mockFetchedData) {
                     await setDoc(doc(reviewsRef, rev.id), rev);
                 }
-                
                 await loadReviewsFromFirebase();
                 
             } finally {
@@ -354,8 +365,8 @@
             const selectedMonthStr = document.getElementById('month-selector').value;
             if(!selectedMonthStr || allReviews.length === 0) return;
 
-            // 1. 過濾出該月份的評論
-            filteredReviewsByMonth = allReviews.filter(r => r.datetime.startsWith(selectedMonthStr));
+            // 1. 過濾出該月份的評論 (針對真實 Firebase 資料庫 allReviews)
+            filteredReviewsByMonth = allReviews.filter(r => r.datetime && r.datetime.startsWith(selectedMonthStr));
             
             // 2. 時段計數器 (夜班, 早班, 晚班)
             let shiftCounts = { night: 0, early: 0, late: 0 };
@@ -367,7 +378,9 @@
 
             // 4. 執行文本拆解與時段分析
             filteredReviewsByMonth.forEach(review => {
-                const hour = parseInt(review.datetime.split('T')[1].substring(0, 2), 10);
+                const timeString = review.datetime.includes('T') ? review.datetime.split('T')[1] : review.datetime.split(' ')[1];
+                let hour = 12; // fallback
+                if(timeString) hour = parseInt(timeString.substring(0, 2), 10);
                 
                 if (hour >= 0 && hour < 8) {
                     shiftCounts.night++;
@@ -382,7 +395,7 @@
 
                 let tags = [];
                 Object.keys(categories).forEach(catKey => {
-                    const matched = categories[catKey].keywords.some(kw => review.text.includes(kw));
+                    const matched = categories[catKey].keywords.some(kw => review.text && review.text.includes(kw));
                     if (matched) {
                         tags.push(catKey);
                         analysisData[catKey].total++;
@@ -491,26 +504,35 @@
 
             // 依時間反向排序 (最新在前)
             displayReviews.sort((a,b) => new Date(b.datetime) - new Date(a.datetime)).forEach(r => {
-                const stars = '<i class="fa-solid fa-star text-yellow-400"></i>'.repeat(r.rating) + 
-                              '<i class="fa-regular fa-star text-slate-300"></i>'.repeat(5 - r.rating);
+                const validRating = Number(r.rating) || 5; // 防呆
+                const stars = '<i class="fa-solid fa-star text-yellow-400"></i>'.repeat(Math.round(validRating)) + 
+                              '<i class="fa-regular fa-star text-slate-300"></i>'.repeat(5 - Math.round(validRating));
                 
                 let tagsHtml = (r.tags || []).map(t => {
                     const c = categories[t];
                     return `<span class="text-xs px-2 py-1 rounded bg-white border ${c.color.replace('theme-', 'border-theme-')} ${c.color} font-bold">${c.name}</span>`;
                 }).join('');
 
-                let borderCol = r.rating >= 4 ? 'border-emerald-500' : (r.rating === 3 ? 'border-amber-400' : 'border-red-500');
-                let bgCol = r.rating <= 2 ? 'bg-red-50' : 'bg-white'; 
+                let borderCol = validRating >= 4 ? 'border-emerald-500' : (validRating === 3 ? 'border-amber-400' : 'border-red-500');
+                let bgCol = validRating <= 2 ? 'bg-red-50' : 'bg-white'; 
                 
-                const datePart = r.datetime.split('T')[0];
-                const timePart = r.datetime.split('T')[1].substring(0,5);
+                // 解析時間字串防呆
+                let datePart = "未知日期";
+                let timePart = "";
+                if(r.datetime) {
+                    const timeSplit = r.datetime.includes('T') ? 'T' : ' ';
+                    datePart = r.datetime.split(timeSplit)[0];
+                    if(r.datetime.split(timeSplit)[1]) {
+                        timePart = r.datetime.split(timeSplit)[1].substring(0,5);
+                    }
+                }
 
                 const html = `
                     <li class="${bgCol} p-5 rounded-xl shadow-sm border-l-4 ${borderCol} border-t border-r border-b border-slate-100 flex flex-col md:flex-row gap-5 hover:shadow-md transition">
                         <div class="flex flex-col gap-2 shrink-0 md:w-40 border-b md:border-b-0 md:border-r border-slate-200 pb-3 md:pb-0 md:pr-4">
                             <div class="text-sm tracking-widest">${stars}</div>
                             <div class="text-xs text-slate-500 font-bold">${datePart} <span class="text-slate-400 ml-1 font-normal">${timePart}</span></div>
-                            <div class="text-[10px] font-bold text-indigo-600 bg-indigo-50 inline-block px-2 py-1 rounded w-max">${r.shiftName}</div>
+                            <div class="text-[10px] font-bold text-indigo-600 bg-indigo-50 inline-block px-2 py-1 rounded w-max">${r.shiftName || ''}</div>
                             <div class="flex flex-wrap gap-1 mt-1">${tagsHtml}</div>
                         </div>
                         <p class="text-slate-700 text-base leading-relaxed flex-grow">${r.text}</p>
@@ -531,9 +553,13 @@
 
             const exportData = reviewsToExport.map(r => {
                 const categoryNames = (r.tags || []).map(t => categories[t].name).join(', ');
+                const timeSplit = r.datetime.includes('T') ? 'T' : ' ';
+                const datePart = r.datetime.split(timeSplit)[0];
+                const timePart = r.datetime.split(timeSplit)[1] ? r.datetime.split(timeSplit)[1].substring(0,5) : '';
+
                 return {
-                    '評論日期': r.datetime.split('T')[0],
-                    '時間': r.datetime.split('T')[1].substring(0,5),
+                    '評論日期': datePart,
+                    '時間': timePart,
                     '營運時段': r.shiftName,
                     '星級': r.rating + ' 顆星',
                     '相關分類': categoryNames || '無特別分類',
@@ -545,7 +571,8 @@
 
             const dateCounts = {};
             reviewsToExport.forEach(r => {
-                const dateKey = r.datetime.split('T')[0];
+                const timeSplit = r.datetime.includes('T') ? 'T' : ' ';
+                const dateKey = r.datetime.split(timeSplit)[0];
                 dateCounts[dateKey] = (dateCounts[dateKey] || 0) + 1;
             });
             
@@ -580,7 +607,6 @@
             showToast("報表匯出成功", "success");
         }
 
-        // 共用 Toast 通知
         function showToast(message, type = "info") {
             const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
@@ -602,7 +628,6 @@
             }, 3000);
         }
 
-        // 啟動
         window.onload = () => {
             initFirebase();
         };
